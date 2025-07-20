@@ -14,12 +14,15 @@ from pydantic import ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from anthropic import APIError, RateLimitError, APITimeoutError
 
-from app.core.config import settings
+from app.core.config import get_global_settings
 from app.core.error_handler import error_handler, ErrorCode
 from app.models.requests import FlightParseRequest, LodgingParseRequest
 from app.models.responses import ErrorResponse, FlightParseResponse, LodgingParseResponse
 from app.services.universal_parser import UniversalParser
 from app.services.cache_manager import CacheManager
+
+# Get global settings instance
+settings = get_global_settings()
 
 # Configure comprehensive logging
 logging.basicConfig(
@@ -56,7 +59,7 @@ app = FastAPI(
 # Configure CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

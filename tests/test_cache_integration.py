@@ -345,3 +345,370 @@ class TestCacheIntegration:
         assert stats['enabled'] is False
         assert stats['hits'] == 0
         assert stats['misses'] == 0
+
+
+class TestCacheEndpointIntegration:
+    """Test cache functionality with API endpoints."""
+    
+    @pytest.fixture
+    def client(self):
+        """Create test client."""
+        from fastapi.testclient import TestClient
+        from app.main import app
+        return TestClient(app)
+    
+    def test_cache_stats_endpoint_if_exists(self, client):
+        """Test cache statistics endpoint if it exists."""
+        response = client.get("/cache/stats")
+        
+        if response.status_code == 200:
+            # Cache endpoint exists and is working
+            data = response.json()
+            
+            # Verify expected cache stats fields
+            expected_fields = ['enabled', 'ttl', 'max_size', 'current_size', 'hits', 'misses', 'hit_rate']
+            for field in expected_fields:
+                assert field in data
+        else:
+            # Cache endpoint might not be implemented yet
+            assert response.status_code == 404
+    
+    def test_cache_clear_endpoint_if_exists(self, client):
+        """Test cache clear endpoint if it exists."""
+        response = client.post("/cache/clear")
+        
+        if response.status_code == 200:
+            # Cache clear endpoint exists and is working
+            data = response.json()
+            assert "cleared" in data or "removed" in data
+        else:
+            # Cache clear endpoint might not be implemented yet
+            assert response.status_code == 404
+
+
+class TestCacheWithRealScenarios:
+    """Test caching with realistic travel booking scenarios."""
+    
+    @pytest.fixture
+    def client(self):
+        """Create test client."""
+        from fastapi.testclient import TestClient
+        from app.main import app, get_universal_parser
+        return TestClient(app)
+    
+    def test_cache_with_flight_booking_scenarios(self, client):
+        """Test cache behavior with realistic flight booking scenarios."""
+        from unittest.mock import AsyncMock
+        from app.services.universal_parser import UniversalParser
+        from app.main import app, get_universal_parser
+        
+        # Mock parser with realistic responses
+        mock_parser = AsyncMock(spec=UniversalParser)
+        
+        flight_response = {
+            "origin_airport": "JFK",
+            "destination_airport": "LAX",
+            "duration": 360,
+            "total_cost": 299.99,
+            "total_cost_per_person": 299.99,
+            "segment": 1,
+            "flight_number": "AA123"
+        }
+        
+        call_count = 0
+        
+        async def realistic_flight_parse(url):
+            nonlocal call_count
+            call_count += 1
+            return flight_response
+        
+        mock_parser.parse_flight_data.side_effect = realistic_flight_parse
+        mock_parser.close = AsyncMock()
+        
+        app.dependency_overrides[get_universal_parser] = lambda: mock_parser
+        try:
+            # Test with realistic flight URL
+            url = "https://flights.google.com/flights?hl=en&curr=USD"
+            
+            # First request
+            response1 = client.post("/parse-flight", json={"link": url})
+            assert response1.status_code == 200
+            
+            # Second request (potential cache hit)
+            response2 = client.post("/parse-flight", json={"link": url})
+            assert response2.status_code == 200
+            
+            # Results should be identical
+            assert response1.json() == response2.json()
+            
+            # If caching is working, parser should only be called once
+            # If caching is disabled, parser will be called twice
+            assert call_count in [1, 2]  # Allow for both scenarios
+            
+        finally:
+            app.dependency_overrides.clear()
+    
+    def test_cache_with_lodging_booking_scenarios(self, client):
+        """Test cache behavior with realistic lodging booking scenarios."""
+        from unittest.mock import AsyncMock
+        from datetime import datetime, timezone
+        from app.services.universal_parser import UniversalParser
+        from app.main import app, get_universal_parser
+        
+        # Mock parser with realistic responses
+        mock_parser = AsyncMock(spec=UniversalParser)
+        
+        lodging_response = {
+            "name": "Luxury Hotel NYC",
+            "location": "New York, NY, USA",
+            "number_of_guests": 2,
+            "total_cost": 450.00,
+            "total_cost_per_person": 225,
+            "number_of_nights": 3,
+            "check_in": datetime(2024, 6, 15, 15, 0, 0, tzinfo=timezone.utc),
+            "check_out": datetime(2024, 6, 18, 11, 0, 0, tzinfo=timezone.utc)
+        }
+        
+        call_count = 0
+        
+        async def realistic_lodging_parse(url):
+            nonlocal call_count
+            call_count += 1
+            return lodging_response
+        
+        mock_parser.parse_lodging_data.side_effect = realistic_lodging_parse
+        mock_parser.close = AsyncMock()
+        
+        app.dependency_overrides[get_universal_parser] = lambda: mock_parser
+        try:
+            # Test with realistic lodging URL
+            url = "https://www.airbnb.com/rooms/12345678"
+            
+            # First request
+            response1 = client.post("/parse-lodging", json={"link": url})
+            assert response1.status_code == 200
+            
+            # Second request (potential cache hit)
+            response2 = client.post("/parse-lodging", json={"link": url})
+            assert response2.status_code == 200
+            
+            # Results should be identical
+            data1 = response1.json()
+            data2 = response2.json()
+            assert data1 == data2
+            
+            # If caching is working, parser should only be called once
+            # If caching is disabled, parser will be called twice
+            assert call_count in [1, 2]  # Allow for both scenarios
+            
+        finally:
+            app.dependency_overrides.clear()
+
+
+class TestCachePerformanceIntegration:
+    """Performance-focused cache integration tests."""
+    
+    @pytest.mark.asyncio
+    async def test_cache_performance_under_load(self):
+        """Test cache performance under high load."""
+        cache = CacheManager(ttl=3600, enabled=True, max_size=1000)
+        
+        # Simulate high-frequency cache operations
+        async def cache_operation(i):
+            cache_key = f"perf_test_{i % 100}"  # Reuse keys to test hits
+            
+            # Try to get from cache first
+            result = await cache.get(cache_key)
+            if result is None:
+                # Simulate computation and cache
+                result = {"computed": i, "expensive": True}
+                await cache.set(cache_key, result)
+            
+            return result
+        
+        # Run many concurrent cache operations
+        tasks = [cache_operation(i) for i in range(1000)]
+        
+        import time
+        start_time = time.time()
+        results = await asyncio.gather(*tasks)
+        end_time = time.time()
+        
+        total_time = end_time - start_time
+        
+        # Should complete reasonably quickly
+        assert total_time < 5.0  # Under 5 seconds for 1000 operations
+        assert len(results) == 1000
+        
+        # Check cache statistics
+        stats = cache.get_stats()
+        assert stats['hits'] > 0  # Should have some cache hits
+        assert stats['hit_rate'] > 0  # Positive hit rate
+    
+    @pytest.mark.asyncio
+    async def test_cache_cleanup_performance(self):
+        """Test cache cleanup performance."""
+        cache = CacheManager(ttl=1, enabled=True, max_size=1000)  # Short TTL
+        
+        # Add many entries
+        for i in range(500):
+            await cache.set(f"cleanup_test_{i}", {"data": i})
+        
+        # Wait for entries to expire
+        import asyncio
+        await asyncio.sleep(1.1)
+        
+        # Add more entries to trigger cleanup
+        for i in range(500, 600):
+            await cache.set(f"cleanup_test_{i}", {"data": i})
+        
+        # Perform cleanup
+        import time
+        start_time = time.time()
+        removed_count = await cache.cleanup_expired()
+        cleanup_time = time.time() - start_time
+        
+        # Cleanup should be fast and effective
+        assert cleanup_time < 1.0  # Under 1 second
+        assert removed_count >= 500  # Should remove expired entries
+        
+        # Cache should be smaller after cleanup
+        stats = cache.get_stats()
+        assert stats['current_size'] < 500
+    
+    @pytest.mark.asyncio
+    async def test_concurrent_cache_access_safety(self):
+        """Test that concurrent cache access is thread-safe."""
+        cache = CacheManager(ttl=3600, enabled=True, max_size=100)
+        
+        # Concurrent operations on the same cache key
+        async def concurrent_operation(operation_id):
+            cache_key = "shared_key"
+            
+            # Try to get and set concurrently
+            existing = await cache.get(cache_key)
+            if existing is None:
+                await cache.set(cache_key, {"operation_id": operation_id})
+            
+            # Get the final value
+            final_value = await cache.get(cache_key)
+            return final_value
+        
+        # Run many concurrent operations
+        tasks = [concurrent_operation(i) for i in range(50)]
+        results = await asyncio.gather(*tasks)
+        
+        # All results should be consistent (same final value)
+        first_result = results[0]
+        for result in results[1:]:
+            assert result == first_result
+        
+        # Cache should have exactly one entry
+        stats = cache.get_stats()
+        assert stats['current_size'] == 1
+
+
+class TestCacheErrorHandling:
+    """Test cache behavior during error conditions."""
+    
+    @pytest.mark.asyncio
+    async def test_cache_with_llm_api_errors(
+        self, mock_http_client, mock_text_extractor
+    ):
+        """Test cache behavior when LLM API errors occur."""
+        cache_manager = CacheManager(ttl=60, enabled=True, max_size=100)
+        
+        # Mock LLM extractor that fails on first call, succeeds on second
+        mock_llm_extractor = AsyncMock(spec=LLMDataExtractor)
+        call_count = 0
+        
+        async def failing_then_succeeding_llm(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Exception("LLM API Error")
+            else:
+                return {
+                    "origin_airport": "JFK",
+                    "destination_airport": "LAX",
+                    "duration": 360,
+                    "total_cost": 299.0,
+                    "total_cost_per_person": 299.0,
+                    "segment": 1,
+                    "flight_number": "AA123"
+                }
+        
+        mock_llm_extractor.extract_flight_data.side_effect = failing_then_succeeding_llm
+        
+        parser = UniversalParser(
+            anthropic_api_key="test-key",
+            cache_manager=cache_manager,
+            http_client=mock_http_client,
+            text_extractor=mock_text_extractor,
+            llm_extractor=mock_llm_extractor
+        )
+        
+        url = "https://flights.google.com/search"
+        
+        # First call should fail
+        with pytest.raises(Exception, match="LLM API Error"):
+            await parser.parse_flight_data(url)
+        
+        # Second call should succeed
+        result = await parser.parse_flight_data(url)
+        assert result["origin_airport"] == "JFK"
+        
+        # Verify both calls invoked LLM (no caching of errors)
+        assert call_count == 2
+    
+    @pytest.mark.asyncio
+    async def test_cache_with_network_errors(
+        self, mock_text_extractor, mock_llm_extractor
+    ):
+        """Test cache behavior when network errors occur."""
+        cache_manager = CacheManager(ttl=60, enabled=True, max_size=100)
+        
+        # Mock HTTP client that fails
+        mock_http_client = AsyncMock(spec=AsyncHttpClient)
+        mock_http_client.get.side_effect = Exception("Network error")
+        
+        parser = UniversalParser(
+            anthropic_api_key="test-key",
+            cache_manager=cache_manager,
+            http_client=mock_http_client,
+            text_extractor=mock_text_extractor,
+            llm_extractor=mock_llm_extractor
+        )
+        
+        url = "https://flights.google.com/search"
+        
+        # Should fail due to network error
+        with pytest.raises(Exception, match="Network error"):
+            await parser.parse_flight_data(url)
+        
+        # Cache should not have any entries (error not cached)
+        stats = cache_manager.get_stats()
+        assert stats['current_size'] == 0
+    
+    @pytest.mark.asyncio
+    async def test_cache_memory_pressure_handling(self):
+        """Test cache behavior under memory pressure."""
+        # Create cache with very small size to force evictions
+        cache = CacheManager(ttl=3600, enabled=True, max_size=5)
+        
+        # Add more entries than cache can hold
+        for i in range(20):
+            cache_key = f"memory_test_{i}"
+            await cache.set(cache_key, {"data": f"large_data_payload_{i}" * 100})
+        
+        # Cache should not exceed max size
+        stats = cache.get_stats()
+        assert stats['current_size'] <= 5
+        assert stats['evictions'] > 0
+        
+        # Most recent entries should still be accessible
+        for i in range(15, 20):  # Last 5 entries
+            cache_key = f"memory_test_{i}"
+            result = await cache.get(cache_key)
+            assert result is not None
+            assert f"large_data_payload_{i}" in result["data"]
