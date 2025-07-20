@@ -84,7 +84,7 @@
   - Write unit tests for error handling and logging functionality
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 8.4_
 
-- [ ] 11. Add caching layer for cost optimization
+- [x] 11. Add caching layer for cost optimization
   - Implement CacheManager class with TTL-based caching for LLM responses to reduce API costs
   - Add cache key generation based on URL and extracted text content
   - Implement cache invalidation and cleanup logic with configurable TTL

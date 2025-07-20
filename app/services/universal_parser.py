@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from app.services.http_client import AsyncHttpClient
 from app.services.text_extractor import TextExtractor
 from app.services.llm_data_extractor import LLMDataExtractor
+from app.services.cache_manager import CacheManager
 from app.models.responses import FlightParseResponse, LodgingParseResponse
 
 
@@ -23,6 +24,7 @@ class UniversalParser:
     def __init__(
         self, 
         anthropic_api_key: str,
+        cache_manager: Optional[CacheManager] = None,
         http_client: Optional[AsyncHttpClient] = None,
         text_extractor: Optional[TextExtractor] = None,
         llm_extractor: Optional[LLMDataExtractor] = None
@@ -32,6 +34,7 @@ class UniversalParser:
         
         Args:
             anthropic_api_key: API key for Anthropic Claude
+            cache_manager: Optional cache manager instance
             http_client: Optional HTTP client instance
             text_extractor: Optional text extractor instance
             llm_extractor: Optional LLM data extractor instance
@@ -39,6 +42,7 @@ class UniversalParser:
         self.logger = logging.getLogger(__name__)
         
         # Initialize services
+        self.cache_manager = cache_manager
         self.http_client = http_client or AsyncHttpClient()
         self.text_extractor = text_extractor or TextExtractor()
         self.llm_extractor = llm_extractor or LLMDataExtractor(anthropic_api_key)
@@ -120,11 +124,23 @@ class UniversalParser:
             # Scrape and extract text
             text_content = await self.scrape_and_extract_text(url)
             
-            # Use LLM to extract structured flight data
+            # Check cache first if cache manager is available
+            if self.cache_manager:
+                cache_key = self.cache_manager.generate_cache_key(url, text_content, "flight")
+                cached_data = await self.cache_manager.get(cache_key)
+                if cached_data is not None:
+                    self.logger.info(f"Using cached flight data for {url}")
+                    return cached_data
+            
+            # Cache miss or no cache - use LLM to extract structured flight data
             flight_data = await self.llm_extractor.extract_flight_data(text_content)
             
             # Validate data against Pydantic model
             validated_data = self._validate_flight_data(flight_data)
+            
+            # Store in cache if cache manager is available
+            if self.cache_manager:
+                await self.cache_manager.set(cache_key, validated_data)
             
             self.logger.info(f"Successfully parsed flight data from {url}")
             return validated_data
@@ -155,11 +171,23 @@ class UniversalParser:
             # Scrape and extract text
             text_content = await self.scrape_and_extract_text(url)
             
-            # Use LLM to extract structured lodging data
+            # Check cache first if cache manager is available
+            if self.cache_manager:
+                cache_key = self.cache_manager.generate_cache_key(url, text_content, "lodging")
+                cached_data = await self.cache_manager.get(cache_key)
+                if cached_data is not None:
+                    self.logger.info(f"Using cached lodging data for {url}")
+                    return cached_data
+            
+            # Cache miss or no cache - use LLM to extract structured lodging data
             lodging_data = await self.llm_extractor.extract_lodging_data(text_content)
             
             # Validate data against Pydantic model
             validated_data = self._validate_lodging_data(lodging_data)
+            
+            # Store in cache if cache manager is available
+            if self.cache_manager:
+                await self.cache_manager.set(cache_key, validated_data)
             
             self.logger.info(f"Successfully parsed lodging data from {url}")
             return validated_data

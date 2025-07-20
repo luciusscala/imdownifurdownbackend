@@ -19,6 +19,7 @@ from app.core.error_handler import error_handler, ErrorCode
 from app.models.requests import FlightParseRequest, LodgingParseRequest
 from app.models.responses import ErrorResponse, FlightParseResponse, LodgingParseResponse
 from app.services.universal_parser import UniversalParser
+from app.services.cache_manager import CacheManager
 
 # Configure comprehensive logging
 logging.basicConfig(
@@ -62,6 +63,13 @@ app.add_middleware(
 )
 
 
+# Global cache manager instance
+cache_manager = CacheManager(
+    ttl=settings.CACHE_TTL,
+    enabled=settings.ENABLE_CACHE,
+    max_size=settings.CACHE_MAX_SIZE
+)
+
 # Dependency injection for UniversalParser
 async def get_universal_parser() -> UniversalParser:
     """Dependency to provide UniversalParser instance."""
@@ -71,7 +79,10 @@ async def get_universal_parser() -> UniversalParser:
             detail="Anthropic API key not configured"
         )
     
-    return UniversalParser(anthropic_api_key=settings.ANTHROPIC_API_KEY)
+    return UniversalParser(
+        anthropic_api_key=settings.ANTHROPIC_API_KEY,
+        cache_manager=cache_manager
+    )
 
 
 # Global exception handlers using centralized error handler
@@ -217,6 +228,32 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "travel-data-parser"}
+
+
+@app.get("/cache/stats")
+async def get_cache_stats():
+    """Get cache statistics for monitoring and optimization"""
+    return cache_manager.get_stats()
+
+
+@app.get("/cache/info")
+async def get_cache_info():
+    """Get detailed cache information including entry details"""
+    return cache_manager.get_cache_info()
+
+
+@app.post("/cache/cleanup")
+async def cleanup_cache():
+    """Manually trigger cache cleanup to remove expired entries"""
+    removed_count = await cache_manager.cleanup_expired()
+    return {"message": f"Cleaned up {removed_count} expired cache entries"}
+
+
+@app.delete("/cache/clear")
+async def clear_cache():
+    """Clear all cache entries (use with caution)"""
+    removed_count = await cache_manager.clear()
+    return {"message": f"Cleared all cache entries ({removed_count} removed)"}
 
 
 @app.post("/parse-flight", response_model=FlightParseResponse)

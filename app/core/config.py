@@ -24,8 +24,9 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_MINUTE: int = 100
     
     # Cache Configuration
-    CACHE_TTL: int = 3600
-    ENABLE_CACHE: bool = True
+    CACHE_TTL: int = 3600  # Cache TTL in seconds (1 hour default)
+    ENABLE_CACHE: bool = True  # Enable/disable caching
+    CACHE_MAX_SIZE: int = 1000  # Maximum number of cache entries
     
     # Logging Configuration
     LOG_LEVEL: str = "INFO"
