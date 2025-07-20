@@ -406,3 +406,32 @@ class TestFlightParsingEndpoint:
         timestamp = data["timestamp"]
         # Should be able to parse ISO format timestamp
         datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+
+
+    def test_parse_flight_with_real_google_flights_url(self, client):
+        """
+        Full-stack integration test for /parse-flight endpoint using a real Google Flights URL.
+        This test will hit the actual endpoint and require a valid Anthropic API key and internet access.
+        """
+        google_flights_url = "https://www.google.com/travel/flights/s/2Bs5Vn7d3GXGoPg87"
+        response = client.post(
+            "/parse-flight",
+            json={"link": google_flights_url}
+        )
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+        data = response.json()
+        # Check for required fields in the response
+        required_fields = [
+            "origin_airport", "destination_airport", "duration",
+            "total_cost", "total_cost_per_person", "segment", "flight_number"
+        ]
+        for field in required_fields:
+            assert field in data, f"Missing field {field} in response: {data}"
+        # Check types
+        assert isinstance(data["origin_airport"], str)
+        assert isinstance(data["destination_airport"], str)
+        assert isinstance(data["duration"], int)
+        assert isinstance(data["total_cost"], (int, float))
+        assert isinstance(data["total_cost_per_person"], (int, float))
+        assert isinstance(data["segment"], int)
+        assert isinstance(data["flight_number"], str)

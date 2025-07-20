@@ -6,6 +6,8 @@ Tests text extraction from various travel booking site HTML structures.
 import pytest
 from app.services.text_extractor import TextExtractor
 
+import httpx
+
 
 class TestTextExtractor:
     """Test cases for TextExtractor class."""
@@ -398,3 +400,36 @@ class TestTextExtractor:
         assert "Flight Details" in result
         assert "$500" in result
         assert "6h" in result
+
+
+def test_extract_text_from_google_flights_url():
+    """
+    Fetches the Google Flights page and prints the text extracted by TextExtractor.
+    This demonstrates what the parser sees for a JavaScript-heavy site.
+    """
+    from app.services.text_extractor import TextExtractor
+    url = "https://www.google.com/travel/flights/s/2Bs5Vn7d3GXGoPg87"
+    response = httpx.get(url, timeout=30)
+    html = response.text
+    extractor = TextExtractor()
+    extracted_text = extractor.extract_text(html)
+    print("\n--- Extracted Text from Google Flights Page ---\n")
+    print(extracted_text)
+    print("\n--- End of Extracted Text ---\n")
+    # Optionally, assert that the extracted text is not empty (should be mostly empty for JS sites)
+    assert isinstance(extracted_text, str)
+
+
+def test_fetch_raw_html_from_google_flights_url():
+    """
+    Fetches the Google Flights page and prints the RAW HTML (no noise reduction).
+    This shows exactly what the parser receives before any processing.
+    """
+    import httpx
+    url = "https://www.google.com/travel/flights/s/2Bs5Vn7d3GXGoPg87"
+    response = httpx.get(url, timeout=30)
+    html = response.text
+    print("\n--- RAW HTML from Google Flights Page ---\n")
+    print(html)
+    print("\n--- End of RAW HTML ---\n")
+    assert isinstance(html, str)
