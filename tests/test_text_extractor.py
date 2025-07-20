@@ -433,3 +433,61 @@ def test_fetch_raw_html_from_google_flights_url():
     print(html)
     print("\n--- End of RAW HTML ---\n")
     assert isinstance(html, str)
+
+
+import pytest
+
+@pytest.mark.asyncio
+async def test_playwright_text_extractor_google_flights():
+    """
+    Test PlaywrightTextExtractor on a simple public page (example.com).
+    Asserts that the returned text contains 'Example Domain'.
+    """
+    from app.services.text_extractor import PlaywrightTextExtractor
+    url = "https://example.com"
+    extractor = PlaywrightTextExtractor()
+    html = await extractor.extract_text(url)
+    print("\n--- Playwright Extracted HTML (first 1000 chars) ---\n")
+    print(html[:1000])
+    print("\n--- End of Playwright Extracted HTML ---\n")
+    assert "example domain" in html.lower()
+
+@pytest.mark.asyncio
+async def test_playwright_text_extractor_structured_data():
+    """
+    Test PlaywrightTextExtractor's extract_structured_data on a simple public page (example.com).
+    Asserts that the returned dict contains expected keys and at least one field is non-empty.
+    """
+    from app.services.text_extractor import PlaywrightTextExtractor
+    url = "https://example.com"
+    extractor = PlaywrightTextExtractor()
+    data = await extractor.extract_structured_data(url)
+    print("\n--- Playwright Extracted Structured Data ---\n")
+    print(data)
+    print("\n--- End of Playwright Extracted Structured Data ---\n")
+    assert isinstance(data, dict)
+    assert "prices" in data
+    assert "dates" in data
+    assert "locations" in data
+    assert "numbers" in data
+    assert "general" in data
+    # At least one field should be non-empty (general should have the page text)
+    assert any(data["general"]) and "example domain" in data["general"][0].lower()
+
+
+def test_beautifulsoup_text_extractor_static_site():
+    """
+    Test BeautifulSoupTextExtractor on a static HTML snippet to ensure fallback still works.
+    """
+    from app.services.text_extractor import TextExtractor
+    html = """
+    <html><body><div class='booking'><h1>Flight Details</h1><p>From: JFK to CDG</p><p>Price: $599.99</p></div></body></html>
+    """
+    extractor = TextExtractor()
+    text = extractor.extract_text(html)
+    print("\n--- BeautifulSoup Extracted Text ---\n")
+    print(text)
+    print("\n--- End of BeautifulSoup Extracted Text ---\n")
+    assert "Flight Details" in text
+    assert "JFK to CDG" in text
+    assert "$599.99" in text

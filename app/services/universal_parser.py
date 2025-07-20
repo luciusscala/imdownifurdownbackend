@@ -8,12 +8,23 @@ from typing import Dict, Any, Optional, Union
 from urllib.parse import urlparse
 from pydantic import ValidationError
 
+from app.core.config import settings
 from app.services.http_client import AsyncHttpClient
-from app.services.text_extractor import TextExtractor
+from app.services.text_extractor import PlaywrightTextExtractor, TextExtractor
 from app.services.llm_data_extractor import LLMDataExtractor
 from app.services.cache_manager import CacheManager
 from app.models.responses import FlightParseResponse, LodgingParseResponse
 
+
+def is_js_heavy_site(url: str) -> bool:
+    # Expand this list as needed
+    js_sites = [
+        "google.com/travel/flights",
+        "airbnb.com",
+        "booking.com",
+        "hotels.com"
+    ]
+    return any(domain in url for domain in js_sites)
 
 class UniversalParser:
     """
@@ -84,19 +95,26 @@ class UniversalParser:
             if not parsed_url.scheme or not parsed_url.netloc:
                 raise ValueError(f"Invalid URL format: {url}")
             
-            # Make HTTP request to fetch page content
-            response = await self.http_client.get(url)
-            response.raise_for_status()
-            
-            # Extract clean text from HTML
-            html_content = response.text
-            clean_text = self.text_extractor.extract_text(html_content, url)
-            
-            if not clean_text.strip():
-                raise ValueError("No meaningful text content found on the page")
-            
-            self.logger.info(f"Successfully extracted {len(clean_text)} characters of text")
-            return clean_text
+            if getattr(settings, 'ENABLE_PLAYWRIGHT', False) and is_js_heavy_site(url):
+                # Use Playwright for JS-heavy sites
+                html = await PlaywrightTextExtractor().extract_text(url)
+                # Optionally, pass to TextExtractor for cleaning
+                return TextExtractor().extract_text(html)
+            else:
+                # Existing logic (httpx + BeautifulSoup)
+                # Make HTTP request to fetch page content
+                response = await self.http_client.get(url)
+                response.raise_for_status()
+                
+                # Extract clean text from HTML
+                html_content = response.text
+                clean_text = self.text_extractor.extract_text(html_content, url)
+                
+                if not clean_text.strip():
+                    raise ValueError("No meaningful text content found on the page")
+                
+                self.logger.info(f"Successfully extracted {len(clean_text)} characters of text")
+                return clean_text
             
         except Exception as e:
             self.logger.error(f"Failed to scrape and extract text from {url}: {str(e)}")

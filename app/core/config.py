@@ -108,6 +108,11 @@ class Settings(BaseSettings):
         description="Minimum required length for API keys"
     )
     
+    ENABLE_PLAYWRIGHT: bool = Field(
+        default=False,
+        description="Enable Playwright for JS-heavy site extraction"
+    )
+    
     @property
     def CORS_ORIGINS(self) -> List[str]:
         """Get CORS origins as a list"""

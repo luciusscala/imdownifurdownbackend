@@ -128,3 +128,13 @@
   - Conduct cost analysis and performance testing under concurrent load
   - Create API usage examples and integration documentation with cost considerations
   - _Requirements: 8.1, 8.2, 3.1, 3.2, 3.3, 4.1, 4.2, 4.3, 4.4, 4.5_
+
+- [ ] 16. Add Playwright-based JavaScript rendering and extraction
+  - Install Playwright and set up browser dependencies for headless Chromium
+  - Implement PlaywrightTextExtractor class for JS-heavy site scraping
+  - Integrate PlaywrightTextExtractor into UniversalParser with config-based switching
+  - Add logic to choose between BeautifulSoup and Playwright based on URL or config
+  - Add configuration option to enable/disable Playwright extraction
+  - Write integration tests for Playwright extraction with real JS-heavy URLs (e.g., Google Flights)
+  - Optimize resource management, timeouts, and error handling for headless browser usage
+  - Document usage, configuration, and limitations of Playwright-based extraction
