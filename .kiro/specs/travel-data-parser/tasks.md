@@ -66,7 +66,7 @@
   - Write integration tests for the endpoint with various flight booking URLs
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [-] 9. Implement lodging parsing API endpoint
+- [x] 9. Implement lodging parsing API endpoint
   - Create POST /parse-lodging endpoint with LodgingParseRequest validation
   - Integrate UniversalParser to scrape lodging booking URLs and extract accommodation data
   - Add comprehensive error handling for invalid URLs, scraping failures, and LLM API errors
